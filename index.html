@@ -968,10 +968,7 @@ async function getOrderBook(card) {
 
     try {
 
-        const url =
-            "/api/orderbook?pair=" +
-            encodeURIComponent(pair) +
-            "&t=" + Date.now();
+        const url = getApiUrl(pair);
 
         const response = await fetch(url, {
             method: "GET",
