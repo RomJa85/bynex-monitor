@@ -1,0 +1,1545 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BYNEX — монитор стакана</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 25px;
+    background: #101722;
+    color: #e8edf5;
+    font-family: Arial, sans-serif;
+}
+
+.container {
+    max-width: 1150px;
+    margin: 0 auto;
+}
+
+h1 {
+    font-size: 26px;
+    margin-bottom: 8px;
+}
+
+.subtitle {
+    color: #8d9aab;
+    margin-bottom: 25px;
+}
+
+.panel {
+    background: #1a2533;
+    border: 1px solid #2b394b;
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 16px;
+}
+
+.monitor-card {
+    display: grid;
+    grid-template-columns: 155px 1fr;
+    gap: 18px;
+    align-items: stretch;
+}
+
+.pair-selector {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+}
+
+.pair-selector label {
+    color: #aab6c5;
+    font-size: 13px;
+}
+
+select {
+    width: 100%;
+    background: #202e3e;
+    color: white;
+    border: 1px solid #43536a;
+    border-radius: 6px;
+    padding: 12px 8px;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.price-area {
+    min-width: 0;
+}
+
+.prices {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.price-card {
+    background: #202e3e;
+    border-radius: 9px;
+    padding: 18px;
+    min-width: 0;
+}
+
+
+/* Контроллеры BID и ASK */
+.price-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.price-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.price-controller {
+    width: 145px;
+    flex: 0 0 145px;
+    padding-left: 12px;
+    border-left: 1px solid #43536a;
+}
+
+.controller-title {
+    color: #aab6c5;
+    font-size: 11px;
+    margin-bottom: 6px;
+    white-space: nowrap;
+}
+
+.controller-input {
+    width: 100% !important;
+    margin-bottom: 7px;
+    padding: 8px !important;
+    font-size: 14px !important;
+}
+
+.controller-mode {
+    width: 100%;
+    padding: 7px 5px;
+    font-size: 11px;
+}
+
+.control-status {
+    margin-top: 6px;
+    min-height: 14px;
+    color: #8d9aab;
+    font-size: 10px;
+    line-height: 1.3;
+}
+
+.control-status.active {
+    color: #f5c76b;
+}
+
+.control-status.triggered {
+    color: #36d69a;
+    font-weight: bold;
+}
+
+.price-controller.triggered {
+    border-left-color: #36d69a;
+}
+
+.price-controller.triggered .controller-input,
+.price-controller.triggered .controller-mode {
+    border-color: #36d69a;
+}
+
+@media (max-width: 700px) {
+    .price-card {
+        padding: 12px;
+        gap: 8px;
+    }
+
+    .price-controller {
+        width: 125px;
+        flex-basis: 125px;
+        padding-left: 8px;
+    }
+
+    .price-value {
+        font-size: 23px;
+    }
+}
+
+@media (max-width: 430px) {
+    .price-card {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .price-controller {
+        width: 100%;
+        flex-basis: auto;
+        padding-left: 0;
+        padding-top: 9px;
+        border-left: 0;
+        border-top: 1px solid #43536a;
+    }
+}
+
+.price-title {
+    font-size: 13px;
+    color: #aab6c5;
+    margin-bottom: 12px;
+}
+
+.price-value {
+    font-size: 27px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    overflow-wrap: anywhere;
+}
+
+.bid {
+    color: #36d69a;
+}
+
+.ask {
+    color: #ff7373;
+}
+
+.volume {
+    color: #aab6c5;
+    font-size: 13px;
+}
+
+.spread {
+    text-align: center;
+    padding-top: 14px;
+    font-size: 16px;
+}
+
+.spread strong {
+    color: #f5c76b;
+}
+
+.card-status {
+    margin-top: 10px;
+    color: #8d9aab;
+    font-size: 12px;
+}
+
+.success {
+    color: #36d69a;
+}
+
+.error {
+    color: #ff7373;
+}
+
+.controls {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+}
+
+button {
+    background: #2878e8;
+    color: white;
+    border: none;
+    border-radius: 7px;
+    padding: 12px 20px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #3989f5;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+
+.add-button {
+    background: #218b69;
+}
+
+.add-button:hover {
+    background: #2aa47d;
+}
+
+.auto-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+input[type="number"] {
+    width: 75px;
+    padding: 9px;
+    background: #101722;
+    color: white;
+    border: 1px solid #43536a;
+    border-radius: 6px;
+    font-size: 15px;
+}
+
+input[type="checkbox"] {
+    width: 17px;
+    height: 17px;
+    accent-color: #2878e8;
+}
+
+@media (max-width: 700px) {
+    body {
+        padding: 12px;
+    }
+
+    .monitor-card {
+        grid-template-columns: 1fr;
+    }
+
+    .pair-selector {
+        max-width: 100%;
+    }
+
+    .price-value {
+        font-size: 23px;
+    }
+
+    .prices {
+        gap: 8px;
+    }
+
+    .price-card {
+        padding: 12px;
+    }
+}
+
+.arbitrage-panel h2 {
+    margin: 0 0 18px;
+    font-size: 20px;
+}
+
+.arb-controls {
+    display: flex;
+    align-items: end;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.arb-controls label {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    color: #aab6c5;
+    font-size: 13px;
+}
+
+.arb-controls select,
+.arb-controls input {
+    width: 145px;
+    background: #101722;
+    color: white;
+    border: 1px solid #43536a;
+    border-radius: 6px;
+    padding: 11px;
+    font-size: 15px;
+}
+
+.arb-button {
+    background: #218b69;
+    padding: 12px 25px;
+}
+
+.arb-button:hover {
+    background: #2aa47d;
+}
+
+.arb-result {
+    margin-top: 20px;
+    padding: 15px;
+    background: #202e3e;
+    border-radius: 9px;
+    color: #aab6c5;
+    line-height: 1.7;
+}
+
+.arb-result.profit {
+    border: 1px solid #36d69a;
+    color: #e8edf5;
+}
+
+.arb-result.no-profit {
+    border: 1px solid #43536a;
+}
+
+.arb-result.error {
+    border: 1px solid #ff7373;
+    color: #ff9292;
+}
+
+.arb-route {
+    font-size: 19px;
+    font-weight: bold;
+    color: #36d69a;
+    margin: 12px 0;
+}
+
+.arb-margin {
+    font-size: 25px;
+    font-weight: bold;
+    color: #36d69a;
+}
+
+.arb-steps {
+    margin-top: 12px;
+    padding-left: 20px;
+}
+
+.arb-steps li {
+    margin-bottom: 5px;
+}
+
+@media (max-width: 600px) {
+    .arb-controls {
+        align-items: stretch;
+    }
+
+    .arb-controls label,
+    .arb-controls select,
+    .arb-controls input {
+        width: 100%;
+    }
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>BYNEX — монитор стакана</h1>
+
+    <div class="subtitle">
+        Мониторинг лучших цен торговых пар
+    </div>
+
+    <!-- Панель управления -->
+
+    <div class="panel">
+
+        <div class="controls">
+
+            <button class="add-button" id="addButton">
+                + Добавить пару
+            </button>
+
+            <button id="refreshAllButton">
+                Обновить все
+            </button>
+
+            <button id="enableNotificationsButton" type="button">
+                Включить уведомления
+            </button>
+            <span id="notificationStatus" class="subtitle" style="margin:0; font-size:12px;">Уведомления не включены</span>
+
+            <label class="auto-control">
+                <input type="checkbox" id="autoUpdate">
+                Обновлять автоматически
+            </label>
+
+            <label>
+                Интервал (сек.):
+                <input type="number" id="interval"
+                       value="2" min="1" max="3600">
+            </label>
+
+        </div>
+
+    </div>
+
+<!-- Арбитражный модуль -->
+<div class="panel arbitrage-panel">
+
+    <h2>Арбитраж</h2>
+
+    <div class="arb-controls">
+
+        <label>
+            Начальная валюта
+            <select id="arbCurrency">
+                <option value="USDT">USDT</option>
+                <option value="BTC">BTC</option>
+                <option value="LTC">LTC</option>
+                <option value="ETH">ETH</option>
+                <option value="SOL">SOL</option>
+                <option value="BYN">BYN</option>
+                <option value="USD">USD</option>
+            </select>
+        </label>
+
+        <label>
+            Сумма актива
+            <input type="number" id="arbAmount"
+                   value="100" min="0.00000001"
+                   step="any">
+        </label>
+
+        <label>
+            Комиссия за сделку (%)
+            <input type="number" id="arbFee"
+                   value="0.1" min="0"
+                   max="100" step="0.01">
+        </label>
+
+        <button id="arbButton" class="arb-button">
+            Арбитраж
+        </button>
+
+    </div>
+
+    <div id="arbResult" class="arb-result">
+        Выберите параметры и нажмите «Арбитраж».
+    </div>
+
+</div>
+
+    <!-- Здесь создаются блоки мониторинга -->
+
+    <div id="monitors"></div>
+
+</div>
+
+<script>
+
+const PAIRS = [
+    ["USDT-BYN", "USDT / BYN"],
+    ["USDT-USD", "USDT / USD"],
+    ["LTC-USDT", "LTC / USDT"],
+    ["LTC-BYN", "LTC / BYN"],
+    ["LTC-USD", "LTC / USD"],
+    ["BTC-USDT", "BTC / USDT"],
+    ["BTC-BYN", "BTC / BYN"],
+    ["BTC-USD", "BTC / USD"],
+    ["SOL-USDT", "SOL / USDT"],
+    ["SOL-BYN", "SOL / BYN"],
+    ["SOL-USD", "SOL / USD"],
+    ["ETH-USDT", "ETH / USDT"],
+    ["ETH-BYN", "ETH / BYN"],
+    ["ETH-USD", "ETH / USD"]
+];
+
+const monitorsContainer = document.getElementById("monitors");
+
+const addButton = document.getElementById("addButton");
+const refreshAllButton = document.getElementById("refreshAllButton");
+const autoCheckbox = document.getElementById("autoUpdate");
+const intervalInput = document.getElementById("interval");
+
+let nextId = 1;
+let timer = null;
+
+// Форматирование чисел
+function formatNumber(value) {
+
+    return Number(value).toLocaleString("ru-RU", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 8
+    });
+
+}
+
+// Создание списка торговых пар
+function createPairOptions() {
+
+    return PAIRS.map(pair =>
+        `<option value="${pair[0]}">${pair[1]}</option>`
+    ).join("");
+
+}
+
+// Создание нового блока мониторинга
+function addMonitor(initialPair = "USDT-BYN") {
+
+    const id = nextId++;
+
+    const card = document.createElement("div");
+
+    card.className = "panel monitor-card";
+    card.dataset.id = id;
+
+    card.innerHTML = `
+
+        <div class="pair-selector">
+
+            <label>ТОРГОВАЯ ПАРА</label>
+
+            <select class="pair-select">
+                ${createPairOptions()}
+            </select>
+
+        </div>
+
+        <div class="price-area">
+
+            <div class="prices">
+
+                <div class="price-card">
+
+                    <div class="price-main">
+                        <div class="price-title">
+                            ЛУЧШАЯ ПОКУПКА (BID)
+                        </div>
+
+                        <div class="price-value bid bid-price">
+                            —
+                        </div>
+
+                        <div class="volume">
+                            Объём: <span class="bid-volume">—</span>
+                        </div>
+                    </div>
+
+                    <div class="price-controller" data-side="bid">
+                        <div class="controller-title">КОНТРОЛЬ BID</div>
+                        <input
+                            type="number"
+                            class="controller-input bid-control-value"
+                            step="any"
+                            placeholder="Цена"
+                            aria-label="Контрольная цена BID">
+                        <select class="controller-mode bid-control-mode"
+                                aria-label="Режим контроля BID">
+                            <option value="order">Контроль ордера</option>
+                            <option value="threshold">Контроль порога</option>
+                        </select>
+                        <div class="control-status bid-control-status">
+                            Не задано
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="price-card">
+
+                    <div class="price-main">
+                        <div class="price-title">
+                            ЛУЧШАЯ ПРОДАЖА (ASK)
+                        </div>
+
+                        <div class="price-value ask ask-price">
+                            —
+                        </div>
+
+                        <div class="volume">
+                            Объём: <span class="ask-volume">—</span>
+                        </div>
+                    </div>
+
+                    <div class="price-controller" data-side="ask">
+                        <div class="controller-title">КОНТРОЛЬ ASK</div>
+                        <input
+                            type="number"
+                            class="controller-input ask-control-value"
+                            step="any"
+                            placeholder="Цена"
+                            aria-label="Контрольная цена ASK">
+                        <select class="controller-mode ask-control-mode"
+                                aria-label="Режим контроля ASK">
+                            <option value="order">Контроль ордера</option>
+                            <option value="threshold">Контроль порога</option>
+                        </select>
+                        <div class="control-status ask-control-status">
+                            Не задано
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div class="spread">
+                Спред: <strong class="spread-value">—</strong>
+            </div>
+
+            <div class="card-status">
+                Ожидание данных...
+            </div>
+
+        </div>
+    `;
+
+    monitorsContainer.appendChild(card);
+
+    const select = card.querySelector(".pair-select");
+
+    select.value = initialPair;
+
+    // Состояние двух независимых контроллеров данного блока.
+    card._controlState = {
+        bid: { signature: null, fired: false, previousCondition: false },
+        ask: { signature: null, fired: false, previousCondition: false }
+    };
+
+    // Изменение контрольной цены или режима запускает контроль заново.
+    ["bid", "ask"].forEach(side => {
+        const input = card.querySelector("." + side + "-control-value");
+        const mode = card.querySelector("." + side + "-control-mode");
+
+        const resetControl = function() {
+            const state = card._controlState[side];
+            state.signature = null;
+            state.fired = false;
+            state.previousCondition = false;
+
+            const controller = card.querySelector(
+                '.price-controller[data-side="' + side + '"]'
+            );
+            const status = card.querySelector("." + side + "-control-status");
+
+            controller.classList.remove("triggered");
+
+            if (input.value.trim() === "") {
+                status.className = "control-status " + side + "-control-status";
+                status.textContent = "Не задано";
+            } else {
+                status.className = "control-status " + side + "-control-status active";
+                status.textContent = "Контроль активен";
+            }
+        };
+
+        input.addEventListener("input", resetControl);
+        mode.addEventListener("change", resetControl);
+    });
+
+    // При смене торговой пары сбрасываем контрольные цены:
+    // значения в разных парах могут быть несопоставимы.
+    select.addEventListener("change", function() {
+        ["bid", "ask"].forEach(side => {
+            card.querySelector("." + side + "-control-value").value = "";
+            card.querySelector("." + side + "-control-mode").value = "order";
+            card._controlState[side] = {
+                signature: null,
+                fired: false,
+                previousCondition: false
+            };
+            const controller = card.querySelector(
+                '.price-controller[data-side="' + side + '"]'
+            );
+            controller.classList.remove("triggered");
+            const status = card.querySelector("." + side + "-control-status");
+            status.className = "control-status " + side + "-control-status";
+            status.textContent = "Не задано";
+        });
+
+        getOrderBook(card);
+    });
+
+    // Сразу получаем данные для новой пары
+    getOrderBook(card);
+
+}
+
+// Браузерные уведомления Chrome / Windows.
+function updateNotificationStatus() {
+    const button = document.getElementById("enableNotificationsButton");
+    const status = document.getElementById("notificationStatus");
+
+    if (!("Notification" in window)) {
+        button.disabled = true;
+        button.textContent = "Уведомления недоступны";
+        status.textContent = "Этот браузер не поддерживает уведомления";
+        return;
+    }
+
+    if (Notification.permission === "granted") {
+        button.textContent = "Уведомления включены";
+        status.textContent = "Chrome разрешил уведомления";
+    } else if (Notification.permission === "denied") {
+        button.textContent = "Уведомления заблокированы";
+        status.textContent = "Разрешите уведомления для localhost в настройках Chrome";
+    } else {
+        button.textContent = "Включить уведомления";
+        status.textContent = "Уведомления не включены";
+    }
+}
+
+async function enableBrowserNotifications() {
+    if (!("Notification" in window)) {
+        updateNotificationStatus();
+        return;
+    }
+
+    try {
+        if (Notification.permission === "default") {
+            await Notification.requestPermission();
+        }
+    } catch (error) {
+        console.warn("Не удалось запросить разрешение на уведомления:", error);
+    }
+
+    updateNotificationStatus();
+
+    if (Notification.permission === "granted") {
+        // Тестовое уведомление подтверждает, что разрешение работает.
+        new Notification("BYNEX — уведомления включены", {
+            body: "Вы будете получать уведомления при срабатывании контролей BID и ASK."
+        });
+    }
+}
+
+function sendPriceNotification(card, side, target, currentPrice, selectedMode) {
+    if (!("Notification" in window) || Notification.permission !== "granted") {
+        return;
+    }
+
+    const pair = card.querySelector(".pair-select").value;
+    const sideName = side.toUpperCase();
+    const modeName = selectedMode === "order" ? "Контроль ордера" : "Контроль порога";
+
+    try {
+        new Notification("BYNEX — сигнал " + sideName + " · " + pair, {
+            body: modeName + "\nКонтрольная цена: " + target +
+                "\nТекущая цена: " + currentPrice,
+            tag: "bynex-" + pair + "-" + side,
+            renotify: false
+        });
+    } catch (error) {
+        console.warn("Не удалось показать браузерное уведомление:", error);
+    }
+}
+
+document.getElementById("enableNotificationsButton")
+    .addEventListener("click", enableBrowserNotifications);
+updateNotificationStatus();
+
+// Звуковой сигнал при срабатывании контроллера.
+// Если браузер запрещает автоматическое воспроизведение звука,
+// визуальный сигнал всё равно будет показан.
+function playControlAlert() {
+    try {
+        const AudioContextClass =
+            window.AudioContext || window.webkitAudioContext;
+
+        if (!AudioContextClass) return;
+
+        const audioContext = new AudioContextClass();
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+        oscillator.frequency.setValueAtTime(660, audioContext.currentTime + 0.18);
+
+        gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.18, audioContext.currentTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.42);
+
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.45);
+        oscillator.onended = () => audioContext.close();
+    } catch (error) {
+        console.warn("Не удалось воспроизвести звуковой сигнал:", error);
+    }
+}
+
+// Проверка одного контроллера после каждого успешного обновления стакана.
+function checkPriceControl(card, side, currentPrice) {
+    const input = card.querySelector("." + side + "-control-value");
+    const mode = card.querySelector("." + side + "-control-mode");
+    const status = card.querySelector("." + side + "-control-status");
+    const controller = card.querySelector(
+        '.price-controller[data-side="' + side + '"]'
+    );
+    const state = card._controlState[side];
+
+    const rawValue = input.value.trim();
+    const target = Number(rawValue);
+
+    if (
+        rawValue === "" ||
+        !Number.isFinite(target) ||
+        target <= 0
+    ) {
+        state.signature = null;
+        state.fired = false;
+        state.previousCondition = false;
+        controller.classList.remove("triggered");
+        status.className = "control-status " + side + "-control-status";
+        status.textContent = rawValue === "" ? "Не задано" : "Некорректная цена";
+        return;
+    }
+
+    const selectedMode = mode.value;
+    const signature = rawValue + "|" + selectedMode;
+
+    // Если цена или режим изменились, начинаем новый цикл контроля.
+    if (state.signature !== signature) {
+        state.signature = signature;
+        state.fired = false;
+        state.previousCondition = false;
+        controller.classList.remove("triggered");
+    }
+
+    let condition = false;
+
+    if (side === "bid") {
+        // BID / Контроль ордера: лучшая покупка ушла ниже цены ордера.
+        // BID / Контроль порога: лучшая покупка стала выше заданного порога.
+        condition = selectedMode === "order"
+            ? currentPrice < target
+            : currentPrice > target;
+    } else {
+        // ASK / Контроль ордера: лучшая продажа ушла выше цены ордера.
+        // ASK / Контроль порога: лучшая продажа стала ниже заданного порога.
+        condition = selectedMode === "order"
+            ? currentPrice > target
+            : currentPrice < target;
+    }
+
+    if (!state.fired && condition) {
+        state.fired = true;
+        state.previousCondition = true;
+
+        controller.classList.add("triggered");
+        status.className = "control-status " + side + "-control-status triggered";
+        status.textContent = "СИГНАЛ! Условие выполнено";
+
+        playControlAlert();
+        sendPriceNotification(card, side, target, currentPrice, selectedMode);
+        console.info(
+            "BYNEX: сработал контроль " + side.toUpperCase(),
+            { target, currentPrice, mode: selectedMode }
+        );
+
+        return;
+    }
+
+    if (state.fired) {
+        controller.classList.add("triggered");
+        status.className = "control-status " + side + "-control-status triggered";
+        status.textContent = "СИГНАЛ! Условие выполнено";
+    } else {
+        controller.classList.remove("triggered");
+        status.className = "control-status " + side + "-control-status active";
+        status.textContent = "Контроль активен";
+    }
+
+    state.previousCondition = condition;
+}
+
+// Получение стакана для конкретного блока
+async function getOrderBook(card) {
+
+    if (card.dataset.loading === "true") {
+        return;
+    }
+
+    card.dataset.loading = "true";
+
+    const pair = card.querySelector(".pair-select").value;
+    const status = card.querySelector(".card-status");
+
+    status.className = "card-status";
+    status.textContent = "Получение данных...";
+
+    try {
+
+        const url =
+            "/api/orderbook?pair=" +
+            encodeURIComponent(pair) +
+            "&t=" + Date.now();
+
+        const response = await fetch(url, {
+            method: "GET",
+            cache: "no-store"
+        });
+
+        if (!response.ok) {
+            throw new Error("HTTP " + response.status);
+        }
+
+        const book = await response.json();
+
+        // Проверяем, что пользователь не сменил пару
+        // во время выполнения запроса
+        if (card.querySelector(".pair-select").value !== pair) {
+            return;
+        }
+
+        if (!book.bids || !book.asks ||
+            book.bids.length === 0 ||
+            book.asks.length === 0) {
+
+            throw new Error("Стакан пуст");
+        }
+
+        const bestBid = book.bids.reduce((best, item) =>
+            Number(item.price) > Number(best.price) ? item : best
+        );
+
+        const bestAsk = book.asks.reduce((best, item) =>
+            Number(item.price) < Number(best.price) ? item : best
+        );
+
+        const bidPrice = Number(bestBid.price);
+        const askPrice = Number(bestAsk.price);
+
+        card.querySelector(".bid-price").textContent =
+            formatNumber(bidPrice);
+
+        card.querySelector(".ask-price").textContent =
+            formatNumber(askPrice);
+
+        card.querySelector(".bid-volume").textContent =
+            formatNumber(bestBid.volume);
+
+        card.querySelector(".ask-volume").textContent =
+            formatNumber(bestAsk.volume);
+
+        card.querySelector(".spread-value").textContent =
+            formatNumber(askPrice - bidPrice);
+
+        // Независимая проверка контрольных условий BID и ASK.
+        checkPriceControl(card, "bid", bidPrice);
+        checkPriceControl(card, "ask", askPrice);
+
+        const time = new Date().toLocaleTimeString("ru-RU");
+
+        status.className = "card-status success";
+
+        status.textContent =
+            "Обновлено: " + time;
+
+    } catch (error) {
+
+        status.className = "card-status error";
+
+        status.textContent =
+            "Ошибка: " + error.message;
+
+        console.error("BYNEX " + pair, error);
+
+    } finally {
+
+        card.dataset.loading = "false";
+
+    }
+
+}
+
+// Обновление всех блоков
+function refreshAll() {
+
+    const cards = monitorsContainer.querySelectorAll(".monitor-card");
+
+    cards.forEach(card => {
+        getOrderBook(card);
+    });
+
+}
+
+// Остановка автоматического обновления
+function stopAutoUpdate() {
+
+    if (timer !== null) {
+        clearInterval(timer);
+        timer = null;
+    }
+
+}
+
+// Запуск автоматического обновления
+function startAutoUpdate() {
+
+    stopAutoUpdate();
+
+    const seconds = Number(intervalInput.value);
+
+    if (!Number.isFinite(seconds) ||
+        seconds < 1 ||
+        seconds > 3600) {
+
+        alert("Укажите интервал от 1 до 3600 секунд.");
+        autoCheckbox.checked = false;
+        return;
+    }
+
+    refreshAll();
+
+    timer = setInterval(refreshAll, seconds * 1000);
+
+}
+
+// Кнопка добавления пары
+addButton.addEventListener("click", function() {
+
+    addMonitor();
+
+});
+
+// Обновить все блоки
+refreshAllButton.addEventListener("click", function() {
+
+    refreshAll();
+
+});
+
+// Автоматическое обновление
+autoCheckbox.addEventListener("change", function() {
+
+    if (this.checked) {
+        startAutoUpdate();
+    } else {
+        stopAutoUpdate();
+    }
+
+});
+
+// Изменение интервала
+intervalInput.addEventListener("change", function() {
+
+    if (autoCheckbox.checked) {
+        startAutoUpdate();
+    }
+
+});
+
+// Создаём первый блок при открытии страницы
+addMonitor("USDT-BYN");
+
+// ==========================================
+// АРБИТРАЖНЫЙ АЛГОРИТМ
+// ==========================================
+
+const arbButton = document.getElementById("arbButton");
+const arbResult = document.getElementById("arbResult");
+
+function arbFormat(value) {
+    return Number(value).toLocaleString("ru-RU", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 10
+    });
+}
+
+// Получение актуальных стаканов выбранных пар
+async function getArbitrageOrderBooks(pairs) {
+
+    const results = await Promise.all(
+        pairs.map(async pair => {
+
+            const url =
+                "/api/orderbook?pair=" +
+                encodeURIComponent(pair) +
+                "&t=" + Date.now();
+
+            const response = await fetch(url, {
+                cache: "no-store"
+            });
+
+            if (!response.ok) {
+                throw new Error(pair + ": HTTP " + response.status);
+            }
+
+            const book = await response.json();
+
+            if (!book.bids?.length || !book.asks?.length) {
+                throw new Error(pair + ": пустой стакан");
+            }
+
+            return { pair, book };
+        })
+    );
+
+    return results;
+}
+
+// Формирование направлений обмена
+function buildArbitrageEdges(orderBooks, fee) {
+
+    const edges = [];
+
+    orderBooks.forEach(({ pair, book }) => {
+
+        const [base, quote] = pair.split("-");
+
+        const bestBid = book.bids.reduce((best, item) =>
+            Number(item.price) > Number(best.price) ? item : best
+        );
+
+        const bestAsk = book.asks.reduce((best, item) =>
+            Number(item.price) < Number(best.price) ? item : best
+        );
+
+        const bidPrice = Number(bestBid.price);
+        const askPrice = Number(bestAsk.price);
+
+        const bidVolume = Number(bestBid.volume);
+        const askVolume = Number(bestAsk.volume);
+
+        if (
+            !Number.isFinite(bidPrice) ||
+            !Number.isFinite(askPrice) ||
+            !Number.isFinite(bidVolume) ||
+            !Number.isFinite(askVolume) ||
+            bidPrice <= 0 ||
+            askPrice <= 0 ||
+            bidVolume <= 0 ||
+            askVolume <= 0
+        ) {
+            return;
+        }
+
+        // Направление 1:
+        // продаём BASE и получаем QUOTE по BID
+
+        edges.push({
+            from: base,
+            to: quote,
+            pair: pair,
+            direction: "Продажа по BID",
+            price: bidPrice,
+            rate: bidPrice * (1 - fee),
+            maxInput: bidVolume
+        });
+
+        // Направление 2:
+        // покупаем BASE за QUOTE по ASK
+
+        edges.push({
+            from: quote,
+            to: base,
+            pair: pair,
+            direction: "Покупка по ASK",
+            price: askPrice,
+            rate: (1 / askPrice) * (1 - fee),
+            maxInput: askPrice * askVolume
+        });
+
+    });
+
+    return edges;
+}
+
+// Проверка возможности исполнить одну операцию
+function executeArbitrageEdge(edge, amount) {
+
+    // Объём на лучшем уровне стакана должен быть достаточным.
+    if (amount > edge.maxInput * (1 + 1e-10)) {
+        return null;
+    }
+
+    return amount * edge.rate;
+}
+
+// Поиск цепочек из трёх разных пар
+function findArbitrage(edges, startCurrency, startAmount) {
+
+    const profitableRoutes = [];
+
+    for (const first of edges) {
+
+        if (first.from !== startCurrency) continue;
+
+        for (const second of edges) {
+
+            if (second.from !== first.to) continue;
+            if (second.pair === first.pair) continue;
+
+            // Не допускаем повторение промежуточной валюты
+            if (second.to === startCurrency) continue;
+
+            for (const third of edges) {
+
+                if (third.from !== second.to) continue;
+                if (third.to !== startCurrency) continue;
+
+                // Используем три разные торговые пары
+                if (
+                    third.pair === first.pair ||
+                    third.pair === second.pair
+                ) {
+                    continue;
+                }
+
+                const amountAfterFirst =
+                    executeArbitrageEdge(first, startAmount);
+
+                if (amountAfterFirst === null) continue;
+
+                const amountAfterSecond =
+                    executeArbitrageEdge(second, amountAfterFirst);
+
+                if (amountAfterSecond === null) continue;
+
+                const finalAmount =
+                    executeArbitrageEdge(third, amountAfterSecond);
+
+                if (finalAmount === null) continue;
+
+                const profit = finalAmount - startAmount;
+
+                const margin =
+                    (finalAmount / startAmount - 1) * 100;
+
+                if (profit > 0 && margin > 0) {
+
+                    profitableRoutes.push({
+
+                        currency: startCurrency,
+                        startAmount: startAmount,
+                        finalAmount: finalAmount,
+                        profit: profit,
+                        margin: margin,
+
+                        steps: [
+                            {
+                                edge: first,
+                                input: startAmount,
+                                output: amountAfterFirst
+                            },
+                            {
+                                edge: second,
+                                input: amountAfterFirst,
+                                output: amountAfterSecond
+                            },
+                            {
+                                edge: third,
+                                input: amountAfterSecond,
+                                output: finalAmount
+                            }
+                        ]
+
+                    });
+
+                }
+
+            }
+
+        }
+
+    }
+
+    // Сначала показываем цепочку с максимальной маржой
+    profitableRoutes.sort((a, b) => b.margin - a.margin);
+
+    return profitableRoutes;
+}
+
+// Отображение результата
+function showArbitrageResult(routes, currency) {
+
+    if (routes.length === 0) {
+
+        arbResult.className = "arb-result no-profit";
+
+        arbResult.innerHTML = `
+            <strong>Профитная цепочка не найдена.</strong>
+            <br>
+            Для валюты ${currency} не обнаружено
+            прибыльных цепочек из трёх пар среди выбранных
+            торговых инструментов с учётом комиссии,
+            заданной суммы и доступного объёма на лучших ценах.
+        `;
+
+        return;
+    }
+
+    const best = routes[0];
+
+    const routeText = [
+        best.currency,
+        ...best.steps.map(step => step.edge.to)
+    ].join(" → ");
+
+    const stepsHtml = best.steps.map((step, index) => {
+
+        const edge = step.edge;
+
+        return `
+            <li>
+                <strong>${index + 1}. ${edge.pair.replace("-", " / ")}</strong>
+                — ${edge.direction}
+                <br>
+                ${arbFormat(step.input)} ${edge.from}
+                → ${arbFormat(step.output)} ${edge.to}
+                <br>
+                <span style="color:#aab6c5">
+                    Цена: ${arbFormat(edge.price)}
+                </span>
+            </li>
+        `;
+
+    }).join("");
+
+    arbResult.className = "arb-result profit";
+
+    arbResult.innerHTML = `
+
+        <div><strong>Найдена прибыльная цепочка!</strong></div>
+
+        <div class="arb-route">${routeText}</div>
+
+        <div>
+            Маржа после комиссий:
+            <span class="arb-margin">
+                +${arbFormat(best.margin)}%
+            </span>
+        </div>
+
+        <div class="arb-steps">
+
+            <strong>Последовательность операций:</strong>
+
+            <ol>
+                ${stepsHtml}
+            </ol>
+
+        </div>
+
+        <hr style="border-color:#43536a">
+
+        <div>
+            Начальная сумма:
+            <strong>
+                ${arbFormat(best.startAmount)}
+                ${best.currency}
+            </strong>
+        </div>
+
+        <div>
+            Конечная сумма:
+            <strong style="color:#36d69a">
+                ${arbFormat(best.finalAmount)}
+                ${best.currency}
+            </strong>
+        </div>
+
+        <div>
+            Ожидаемая прибыль:
+            <strong style="color:#36d69a">
+                +${arbFormat(best.profit)}
+                ${best.currency}
+            </strong>
+        </div>
+
+        <div style="margin-top:12px;color:#aab6c5;font-size:12px">
+            Показана лучшая найденная цепочка из
+            ${routes.length} прибыльных вариантов.
+        </div>
+    `;
+
+}
+
+// Основная функция арбитража
+async function runArbitrage() {
+
+    const currency =
+        document.getElementById("arbCurrency").value;
+
+    const amount =
+        Number(document.getElementById("arbAmount").value);
+
+    const feePercent =
+        Number(document.getElementById("arbFee").value);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+
+        arbResult.className = "arb-result error";
+        arbResult.textContent =
+            "Укажите корректную начальную сумму.";
+        return;
+
+    }
+
+    if (
+        !Number.isFinite(feePercent) ||
+        feePercent < 0 ||
+        feePercent >= 100
+    ) {
+
+        arbResult.className = "arb-result error";
+        arbResult.textContent =
+            "Комиссия должна быть от 0 до 100% за сделку.";
+        return;
+
+    }
+
+    // Берём только пары, добавленные в мониторинг
+    const cards =
+        monitorsContainer.querySelectorAll(".monitor-card");
+
+    const selectedPairs = [
+        ...new Set(
+            Array.from(cards).map(card =>
+                card.querySelector(".pair-select").value
+            )
+        )
+    ];
+
+    if (selectedPairs.length < 3) {
+
+        arbResult.className = "arb-result error";
+        arbResult.textContent =
+            "Для поиска цепочки необходимо добавить минимум три разные торговые пары.";
+
+        return;
+
+    }
+
+    arbButton.disabled = true;
+    arbButton.textContent = "Поиск...";
+
+    arbResult.className = "arb-result";
+    arbResult.textContent =
+        "Получение актуальных стаканов и поиск арбитражных цепочек...";
+
+    try {
+
+        // Получаем свежие данные именно для выбранных пар
+        const orderBooks =
+            await getArbitrageOrderBooks(selectedPairs);
+
+        const fee = feePercent / 100;
+
+        const edges =
+            buildArbitrageEdges(orderBooks, fee);
+
+        const routes =
+            findArbitrage(edges, currency, amount);
+
+        showArbitrageResult(routes, currency);
+
+    } catch (error) {
+
+        arbResult.className = "arb-result error";
+        arbResult.textContent =
+            "Ошибка арбитражного анализа: " + error.message;
+
+        console.error("Arbitrage error:", error);
+
+    } finally {
+
+        arbButton.disabled = false;
+        arbButton.textContent = "Арбитраж";
+
+    }
+
+}
+
+arbButton.addEventListener("click", runArbitrage);
+
+</script>
+
+</body>
+</html>
