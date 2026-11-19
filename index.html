@@ -536,6 +536,19 @@ const PAIRS = [
     ["ETH-USD", "ETH / USD"]
 ];
 
+// Адрес домашнего Python API
+const API_BASE = location.hostname.endsWith("github.io")
+    ? "https://YOUR-DEVICE.YOUR-TAILNET.ts.net"
+    : location.origin;
+
+// Формирование адреса API
+function getApiUrl(pair) {
+    return API_BASE +
+        "/api/orderbook?pair=" +
+        encodeURIComponent(pair) +
+        "&t=" + Date.now();
+}
+    
 const monitorsContainer = document.getElementById("monitors");
 
 const addButton = document.getElementById("addButton");
