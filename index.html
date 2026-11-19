@@ -1148,10 +1148,7 @@ async function getArbitrageOrderBooks(pairs) {
     const results = await Promise.all(
         pairs.map(async pair => {
 
-            const url =
-                "/api/orderbook?pair=" +
-                encodeURIComponent(pair) +
-                "&t=" + Date.now();
+            const url = getApiUrl(pair);
 
             const response = await fetch(url, {
                 cache: "no-store"
