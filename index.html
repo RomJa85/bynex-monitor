@@ -272,6 +272,24 @@ button:disabled {
     background: #2aa47d;
 }
 
+.clear-button {
+    background: #8f3d48;
+}
+
+.clear-button:hover {
+    background: #aa4b58;
+}
+
+.remove-card-button {
+    background: #8f3d48;
+    padding: 9px 12px;
+    font-size: 12px;
+}
+
+.remove-card-button:hover {
+    background: #aa4b58;
+}
+
 .auto-control {
     display: flex;
     align-items: center;
@@ -444,6 +462,12 @@ input[type="checkbox"] {
                 Обновить все
             </button>
 
+            <button id="clearMonitorButton" class="clear-button" type="button">
+                Очистить монитор
+            </button>
+
+            <span id="syncStatus" class="subtitle" style="margin:0; font-size:12px;">Подключение к серверу...</span>
+
             <button id="enableNotificationsButton" type="button">
                 Включить уведомления
             </button>
@@ -558,6 +582,12 @@ const intervalInput = document.getElementById("interval");
 let nextId = 1;
 let timer = null;
 
+// Сервер — единый источник конфигурации для ПК и телефона.
+let configRevision = 0;
+let applyingRemoteConfig = false;
+let saveConfigTimer = null;
+let configPollTimer = null;
+
 // Форматирование чисел
 function formatNumber(value) {
 
@@ -578,9 +608,11 @@ function createPairOptions() {
 }
 
 // Создание нового блока мониторинга
-function addMonitor(initialPair = "USDT-BYN") {
+function addMonitor(initialPair = "USDT-BYN", savedCard = null) {
 
-    const id = nextId++;
+    const id = savedCard && savedCard.id != null
+        ? String(savedCard.id)
+        : String(nextId++);
 
     const card = document.createElement("div");
 
@@ -596,6 +628,8 @@ function addMonitor(initialPair = "USDT-BYN") {
             <select class="pair-select">
                 ${createPairOptions()}
             </select>
+
+            <button type="button" class="remove-card-button">Удалить пару</button>
 
         </div>
 
@@ -694,6 +728,17 @@ function addMonitor(initialPair = "USDT-BYN") {
 
     select.value = initialPair;
 
+    // Восстановление контроллеров из серверной конфигурации.
+    if (savedCard) {
+        ["bid", "ask"].forEach(side => {
+            const saved = savedCard[side] || {};
+            card.querySelector("." + side + "-control-value").value =
+                saved.value == null ? "" : saved.value;
+            card.querySelector("." + side + "-control-mode").value =
+                saved.mode === "threshold" ? "threshold" : "order";
+        });
+    }
+
     // Состояние двух независимых контроллеров данного блока.
     card._controlState = {
         bid: { signature: null, fired: false, previousCondition: false },
@@ -725,6 +770,8 @@ function addMonitor(initialPair = "USDT-BYN") {
                 status.className = "control-status " + side + "-control-status active";
                 status.textContent = "Контроль активен";
             }
+
+            scheduleConfigSave();
         };
 
         input.addEventListener("input", resetControl);
@@ -752,6 +799,15 @@ function addMonitor(initialPair = "USDT-BYN") {
         });
 
         getOrderBook(card);
+        scheduleConfigSave();
+    });
+
+    // Удаление отдельной карточки.
+    card.querySelector(".remove-card-button").addEventListener("click", function() {
+        const pair = select.value;
+        if (!confirm("Удалить пару " + pair + " из монитора?")) return;
+        card.remove();
+        scheduleConfigSave();
     });
 
     // Сразу получаем данные для новой пары
@@ -1092,9 +1148,17 @@ function startAutoUpdate() {
 
 // Кнопка добавления пары
 addButton.addEventListener("click", function() {
-
     addMonitor();
+    scheduleConfigSave();
+});
 
+// Полная очистка карточек с подтверждением.
+document.getElementById("clearMonitorButton").addEventListener("click", function() {
+    if (!confirm("Удалить все пары и настройки контроллеров из монитора?")) return;
+    // Сохраняем состояние автоконтроля: при пустом списке сервер просто
+    // не будет опрашивать пары. Новые карточки снова попадут под мониторинг.
+    monitorsContainer.innerHTML = "";
+    scheduleConfigSave();
 });
 
 // Обновить все блоки
@@ -1106,26 +1170,199 @@ refreshAllButton.addEventListener("click", function() {
 
 // Автоматическое обновление
 autoCheckbox.addEventListener("change", function() {
-
     if (this.checked) {
         startAutoUpdate();
     } else {
         stopAutoUpdate();
     }
-
+    scheduleConfigSave();
 });
 
 // Изменение интервала
 intervalInput.addEventListener("change", function() {
-
-    if (autoCheckbox.checked) {
-        startAutoUpdate();
-    }
-
+    if (autoCheckbox.checked) startAutoUpdate();
+    scheduleConfigSave();
 });
 
-// Создаём первый блок при открытии страницы
-addMonitor("USDT-BYN");
+// ==========================================
+// СИНХРОНИЗАЦИЯ С СЕРВЕРОМ
+// ==========================================
+
+const syncStatus = document.getElementById("syncStatus");
+
+function setSyncStatus(message, isError = false) {
+    syncStatus.textContent = message;
+    syncStatus.className = isError ? "subtitle error" : "subtitle";
+    syncStatus.style.margin = "0";
+    syncStatus.style.fontSize = "12px";
+}
+
+async function apiGetConfig() {
+    const response = await fetch(API_BASE + "/api/config", {
+        method: "GET",
+        cache: "no-store"
+    });
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    return await response.json();
+}
+
+function buildCurrentConfig() {
+    const cards = Array.from(
+        monitorsContainer.querySelectorAll(".monitor-card")
+    ).map(card => {
+        const pair = card.querySelector(".pair-select").value;
+        const readControl = side => ({
+            value: card.querySelector("." + side + "-control-value").value.trim(),
+            mode: card.querySelector("." + side + "-control-mode").value
+        });
+
+        return {
+            id: String(card.dataset.id),
+            pair,
+            bid: readControl("bid"),
+            ask: readControl("ask")
+        };
+    });
+
+    return {
+        revision: configRevision,
+        auto_enabled: autoCheckbox.checked,
+        interval: Number(intervalInput.value),
+        cards
+    };
+}
+
+function applyServerConfig(config) {
+    if (!config || !Array.isArray(config.cards)) {
+        throw new Error("Сервер вернул конфигурацию неизвестного формата.");
+    }
+
+    applyingRemoteConfig = true;
+    if (saveConfigTimer !== null) {
+        clearTimeout(saveConfigTimer);
+        saveConfigTimer = null;
+    }
+
+    try {
+        stopAutoUpdate();
+        monitorsContainer.innerHTML = "";
+        nextId = 1;
+
+        config.cards.forEach(savedCard => {
+            const pair = PAIRS.some(item => item[0] === savedCard.pair)
+                ? savedCard.pair
+                : "USDT-BYN";
+            addMonitor(pair, savedCard);
+
+            const numericId = Number(savedCard.id);
+            if (Number.isFinite(numericId)) nextId = Math.max(nextId, numericId + 1);
+        });
+
+        configRevision = Number(config.revision) || 0;
+        autoCheckbox.checked = Boolean(config.auto_enabled);
+
+        const interval = Number(config.interval);
+        intervalInput.value = Number.isFinite(interval) && interval >= 1 && interval <= 3600
+            ? interval
+            : 2;
+
+        if (autoCheckbox.checked) startAutoUpdate();
+    } finally {
+        applyingRemoteConfig = false;
+    }
+}
+
+async function saveConfigNow() {
+    if (applyingRemoteConfig) return;
+
+    const config = buildCurrentConfig();
+    if (!Number.isInteger(config.interval) || config.interval < 1 || config.interval > 3600) {
+        setSyncStatus("Интервал должен быть от 1 до 3600 секунд", true);
+        return;
+    }
+
+    setSyncStatus("Сохранение настроек...");
+
+    try {
+        const response = await fetch(API_BASE + "/api/config", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(config),
+            cache: "no-store"
+        });
+
+        const result = await response.json().catch(() => ({}));
+
+        if (response.status === 409) {
+            if (result && Array.isArray(result.cards)) {
+                applyServerConfig(result);
+            } else {
+                applyServerConfig(await apiGetConfig());
+            }
+            setSyncStatus("Конфигурация обновлена с сервера: обнаружены изменения на другом устройстве");
+            return;
+        }
+
+        if (!response.ok) {
+            throw new Error("HTTP " + response.status);
+        }
+
+        if (result && Array.isArray(result.cards)) {
+            configRevision = Number(result.revision) || configRevision;
+        } else {
+            const latest = await apiGetConfig();
+            configRevision = Number(latest.revision) || configRevision;
+        }
+
+        setSyncStatus("Настройки сохранены · версия " + configRevision);
+    } catch (error) {
+        setSyncStatus("Ошибка сохранения: " + error.message, true);
+        console.error("BYNEX config save:", error);
+    }
+}
+
+function scheduleConfigSave() {
+    if (applyingRemoteConfig) return;
+    if (saveConfigTimer !== null) clearTimeout(saveConfigTimer);
+    saveConfigTimer = setTimeout(() => {
+        saveConfigTimer = null;
+        saveConfigNow();
+    }, 400);
+}
+
+async function pollServerConfig() {
+    try {
+        const config = await apiGetConfig();
+        const serverRevision = Number(config.revision) || 0;
+        if (serverRevision > configRevision) {
+            applyServerConfig(config);
+            setSyncStatus("Получены настройки с другого устройства · версия " + serverRevision);
+        }
+    } catch (error) {
+        setSyncStatus("Нет связи с сервером конфигурации", true);
+        console.warn("BYNEX config polling:", error);
+    }
+}
+
+async function initializeMonitor() {
+    try {
+        const config = await apiGetConfig();
+        applyServerConfig(config);
+        setSyncStatus("Сервер подключён · версия " + configRevision);
+        configPollTimer = setInterval(pollServerConfig, 3000);
+    } catch (error) {
+        setSyncStatus("Не удалось загрузить настройки: " + error.message, true);
+        console.error("BYNEX config init:", error);
+    }
+}
+
+initializeMonitor();
+
+// Конфигурацию карточек загружаем с сервера при старте страницы.
+// Локальный автозапуск карточки здесь намеренно отключён, чтобы не затереть
+// сохранённые настройки на сервере пустой конфигурацией.
 
 // ==========================================
 // АРБИТРАЖНЫЙ АЛГОРИТМ
