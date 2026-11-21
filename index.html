@@ -1184,6 +1184,17 @@ intervalInput.addEventListener("change", function() {
     scheduleConfigSave();
 });
 
+// Сохранение настроек арбитража при изменении
+["autoArbitrage", "arbCurrency", "arbAmount", "arbFee", "arbMinMargin"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+        el.addEventListener("change", scheduleConfigSave);
+        if (el.type === "number") {
+            el.addEventListener("input", scheduleConfigSave);
+        }
+    }
+});
+
 // ==========================================
 // СИНХРОНИЗАЦИЯ С СЕРВЕРОМ
 // ==========================================
@@ -1228,7 +1239,14 @@ function buildCurrentConfig() {
         revision: configRevision,
         auto_enabled: autoCheckbox.checked,
         interval: Number(intervalInput.value),
-        cards
+        cards,
+        arbitrage: {
+            enabled: Boolean(document.getElementById("autoArbitrage")?.checked),
+            currency: document.getElementById("arbCurrency")?.value || "USDT",
+            amount: Number(document.getElementById("arbAmount")?.value) || 100,
+            fee: Number(document.getElementById("arbFee")?.value) || 0.1,
+            min_margin: Number(document.getElementById("arbMinMargin")?.value) || 0.3
+        }
     };
 }
 
@@ -1265,6 +1283,19 @@ function applyServerConfig(config) {
         intervalInput.value = Number.isFinite(interval) && interval >= 1 && interval <= 3600
             ? interval
             : 2;
+
+        // Восстановление настроек арбитража
+        const arb = config.arbitrage || {};
+        const autoArbEl = document.getElementById("autoArbitrage");
+        if (autoArbEl) autoArbEl.checked = Boolean(arb.enabled);
+        const curEl = document.getElementById("arbCurrency");
+        if (curEl && arb.currency) curEl.value = arb.currency;
+        const amtEl = document.getElementById("arbAmount");
+        if (amtEl && arb.amount != null) amtEl.value = arb.amount;
+        const feeEl = document.getElementById("arbFee");
+        if (feeEl && arb.fee != null) feeEl.value = arb.fee;
+        const mmEl = document.getElementById("arbMinMargin");
+        if (mmEl && arb.min_margin != null) mmEl.value = arb.min_margin;
 
         if (autoCheckbox.checked) startAutoUpdate();
     } finally {
