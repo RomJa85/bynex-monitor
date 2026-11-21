@@ -522,9 +522,21 @@ input[type="checkbox"] {
                    max="100" step="0.01">
         </label>
 
+        <label>
+            Мин. маржа (%)
+            <input type="number" id="arbMinMargin"
+                   value="0.3" min="0"
+                   max="100" step="0.01">
+        </label>
+
         <button id="arbButton" class="arb-button">
             Арбитраж
         </button>
+
+        <label class="auto-control" style="align-self:end;">
+            <input type="checkbox" id="autoArbitrage">
+            Автоарбитраж
+        </label>
 
     </div>
 
@@ -584,6 +596,7 @@ let timer = null;
 
 // Сервер — единый источник конфигурации для ПК и телефона.
 let configRevision = 0;
+let apiPassword = null; // хранится только в памяти текущей вкладки
 let applyingRemoteConfig = false;
 let saveConfigTimer = null;
 let configPollTimer = null;
@@ -1184,17 +1197,6 @@ intervalInput.addEventListener("change", function() {
     scheduleConfigSave();
 });
 
-// Сохранение настроек арбитража при изменении
-["autoArbitrage", "arbCurrency", "arbAmount", "arbFee", "arbMinMargin"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-        el.addEventListener("change", scheduleConfigSave);
-        if (el.type === "number") {
-            el.addEventListener("input", scheduleConfigSave);
-        }
-    }
-});
-
 // ==========================================
 // СИНХРОНИЗАЦИЯ С СЕРВЕРОМ
 // ==========================================
@@ -1239,14 +1241,7 @@ function buildCurrentConfig() {
         revision: configRevision,
         auto_enabled: autoCheckbox.checked,
         interval: Number(intervalInput.value),
-        cards,
-        arbitrage: {
-            enabled: Boolean(document.getElementById("autoArbitrage")?.checked),
-            currency: document.getElementById("arbCurrency")?.value || "USDT",
-            amount: Number(document.getElementById("arbAmount")?.value) || 100,
-            fee: Number(document.getElementById("arbFee")?.value) || 0.1,
-            min_margin: Number(document.getElementById("arbMinMargin")?.value) || 0.3
-        }
+        cards
     };
 }
 
@@ -1284,19 +1279,6 @@ function applyServerConfig(config) {
             ? interval
             : 2;
 
-        // Восстановление настроек арбитража
-        const arb = config.arbitrage || {};
-        const autoArbEl = document.getElementById("autoArbitrage");
-        if (autoArbEl) autoArbEl.checked = Boolean(arb.enabled);
-        const curEl = document.getElementById("arbCurrency");
-        if (curEl && arb.currency) curEl.value = arb.currency;
-        const amtEl = document.getElementById("arbAmount");
-        if (amtEl && arb.amount != null) amtEl.value = arb.amount;
-        const feeEl = document.getElementById("arbFee");
-        if (feeEl && arb.fee != null) feeEl.value = arb.fee;
-        const mmEl = document.getElementById("arbMinMargin");
-        if (mmEl && arb.min_margin != null) mmEl.value = arb.min_margin;
-
         if (autoCheckbox.checked) startAutoUpdate();
     } finally {
         applyingRemoteConfig = false;
@@ -1312,19 +1294,34 @@ async function saveConfigNow() {
         return;
     }
 
+    if (!apiPassword) {
+        apiPassword = prompt("Введите пароль управления BYNEX Monitor:");
+        if (!apiPassword) {
+            setSyncStatus("Сохранение отменено: пароль не введён", true);
+            return;
+        }
+    }
+
     setSyncStatus("Сохранение настроек...");
 
     try {
         const response = await fetch(API_BASE + "/api/config", {
             method: "POST",
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + apiPassword
             },
             body: JSON.stringify(config),
             cache: "no-store"
         });
 
         const result = await response.json().catch(() => ({}));
+
+        if (response.status === 401 || response.status === 403) {
+            apiPassword = null;
+            setSyncStatus("Пароль не принят. Изменения не сохранены", true);
+            return;
+        }
 
         if (response.status === 409) {
             if (result && Array.isArray(result.cards)) {
