@@ -751,6 +751,15 @@ function addMonitor(initialPair = "USDT-BYN", savedCard = null) {
         });
     }
 
+    // Зафиксированные значения отделены от текста, который пользователь
+    // набирает прямо сейчас. Контроль использует только зафиксированную пару.
+    ["bid", "ask"].forEach(side => {
+        const input = card.querySelector("." + side + "-control-value");
+        const mode = card.querySelector("." + side + "-control-mode");
+        input.dataset.committedValue = input.value.trim();
+        mode.dataset.committedMode = mode.value;
+    });
+
     // Состояние двух независимых контроллеров данного блока.
     card._controlState = {
         bid: { signature: null, fired: false, previousCondition: false },
@@ -775,7 +784,7 @@ function addMonitor(initialPair = "USDT-BYN", savedCard = null) {
 
             controller.classList.remove("triggered");
 
-            if (input.value.trim() === "") {
+            if (input.dataset.committedValue === "") {
                 status.className = "control-status " + side + "-control-status";
                 status.textContent = "Не задано";
             } else {
@@ -786,16 +795,42 @@ function addMonitor(initialPair = "USDT-BYN", savedCard = null) {
             scheduleConfigSave();
         };
 
-        input.addEventListener("input", resetControl);
-        mode.addEventListener("change", resetControl);
+        // Фиксируем новую цену только после завершения ввода (потеря фокуса
+        // или Enter). До этого момента проверки и синхронизация используют
+        // предыдущее сохранённое значение.
+        const commitControl = function() {
+            const nextValue = input.value.trim();
+            const nextMode = mode.value;
+            const previousValue = input.dataset.committedValue ?? "";
+            const previousMode = mode.dataset.committedMode ?? "order";
+
+            if (nextValue === previousValue && nextMode === previousMode) return;
+
+            input.dataset.committedValue = nextValue;
+            mode.dataset.committedMode = nextMode;
+            resetControl();
+        };
+
+        input.addEventListener("blur", commitControl);
+        input.addEventListener("keydown", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                input.blur();
+            }
+        });
+        mode.addEventListener("change", commitControl);
     });
 
     // При смене торговой пары сбрасываем контрольные цены:
     // значения в разных парах могут быть несопоставимы.
     select.addEventListener("change", function() {
         ["bid", "ask"].forEach(side => {
-            card.querySelector("." + side + "-control-value").value = "";
-            card.querySelector("." + side + "-control-mode").value = "order";
+            const controlInput = card.querySelector("." + side + "-control-value");
+            const controlMode = card.querySelector("." + side + "-control-mode");
+            controlInput.value = "";
+            controlMode.value = "order";
+            controlInput.dataset.committedValue = "";
+            controlMode.dataset.committedMode = "order";
             card._controlState[side] = {
                 signature: null,
                 fired: false,
@@ -943,7 +978,8 @@ function checkPriceControl(card, side, currentPrice) {
     );
     const state = card._controlState[side];
 
-    const rawValue = input.value.trim();
+    // Пока поле редактируется, используем последнее подтверждённое значение.
+    const rawValue = input.dataset.committedValue ?? input.value.trim();
     const target = Number(rawValue);
 
     if (
@@ -960,7 +996,7 @@ function checkPriceControl(card, side, currentPrice) {
         return;
     }
 
-    const selectedMode = mode.value;
+    const selectedMode = mode.dataset.committedMode ?? mode.value;
     const signature = rawValue + "|" + selectedMode;
 
     // Если цена или режим изменились, начинаем новый цикл контроля.
@@ -1233,10 +1269,14 @@ function buildCurrentConfig() {
         monitorsContainer.querySelectorAll(".monitor-card")
     ).map(card => {
         const pair = card.querySelector(".pair-select").value;
-        const readControl = side => ({
-            value: card.querySelector("." + side + "-control-value").value.trim(),
-            mode: card.querySelector("." + side + "-control-mode").value
-        });
+        const readControl = side => {
+            const input = card.querySelector("." + side + "-control-value");
+            const mode = card.querySelector("." + side + "-control-mode");
+            return {
+                value: input.dataset.committedValue ?? input.value.trim(),
+                mode: mode.dataset.committedMode ?? mode.value
+            };
+        };
 
         return {
             id: String(card.dataset.id),
