@@ -1255,8 +1255,12 @@ function buildCurrentConfig() {
             enabled: Boolean(document.getElementById("autoArbitrage")?.checked),
             currency: document.getElementById("arbCurrency")?.value || "USDT",
             amount: Number(document.getElementById("arbAmount")?.value) || 100,
-            fee: Number(document.getElementById("arbFee")?.value) || 0.1,
-            min_margin: Number(document.getElementById("arbMinMargin")?.value) || 0.3
+            fee: document.getElementById("arbFee")?.value.trim() === ""
+                ? 0.1
+                : Number(document.getElementById("arbFee").value),
+            min_margin: document.getElementById("arbMinMargin")?.value.trim() === ""
+                ? 0.3
+                : Number(document.getElementById("arbMinMargin").value)
         }
     };
 }
