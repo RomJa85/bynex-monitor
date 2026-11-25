@@ -199,18 +199,33 @@ def validate_config(candidate):
     arb = candidate.get("arbitrage") or {}
     if not isinstance(arb, dict):
         arb = {}
+    raw_assets = arb.get("starting_assets")
+    if not isinstance(raw_assets, list) or not raw_assets:
+        raw_assets = [{
+            "currency": arb.get("currency", "USDT"),
+            "amount": arb.get("amount", 100),
+        }]
+    starting_assets = []
+    allowed_currencies = {"USDT", "BTC", "LTC", "ETH", "SOL", "BYN", "USD"}
+    for asset in raw_assets[:20]:
+        if not isinstance(asset, dict):
+            continue
+        currency = str(asset.get("currency") or "").upper().strip()
+        try:
+            amount = float(asset.get("amount"))
+        except (TypeError, ValueError):
+            continue
+        if currency in allowed_currencies and math.isfinite(amount) and amount > 0:
+            starting_assets.append({"currency": currency, "amount": amount})
+    if not starting_assets:
+        starting_assets = [{"currency": "USDT", "amount": 100.0}]
+
     result["arbitrage"] = {
         "enabled": bool(arb.get("enabled", False)),
-        "currency": str(arb.get("currency") or "USDT").upper().strip(),
-        "amount": float(arb.get("amount") or 100),
+        "starting_assets": starting_assets,
         "fee": float(arb.get("fee") if arb.get("fee") is not None else 0.1),
         "min_margin": float(arb.get("min_margin") if arb.get("min_margin") is not None else 0.3),
     }
-    if (
-        not math.isfinite(result["arbitrage"]["amount"])
-        or result["arbitrage"]["amount"] <= 0
-    ):
-        result["arbitrage"]["amount"] = 100.0
     if (
         not math.isfinite(result["arbitrage"]["fee"])
         or not (0 <= result["arbitrage"]["fee"] < 100)
@@ -409,10 +424,15 @@ def find_arbitrage(edges, start_currency, start_amount, min_margin):
                         "margin": margin,
                         "profit": profit,
                         "final": final,
+                        "currency": start_currency,
+                        "amount": start_amount,
                         "steps": [
-                            {"edge": first, "in": start_amount, "out": a1},
-                            {"edge": second, "in": a1, "out": a2},
-                            {"edge": third, "in": a2, "out": final},
+                            {"edge": first, "in": start_amount, "out": a1,
+                             "price": (a1 / (start_amount * (1 - first["fee"]))) if first["side"] == "sell" else (start_amount * (1 - first["fee"]) / a1)},
+                            {"edge": second, "in": a1, "out": a2,
+                             "price": (a2 / (a1 * (1 - second["fee"]))) if second["side"] == "sell" else (a1 * (1 - second["fee"]) / a2)},
+                            {"edge": third, "in": a2, "out": final,
+                             "price": (final / (a2 * (1 - third["fee"]))) if third["side"] == "sell" else (a2 * (1 - third["fee"]) / final)},
                         ],
                     })
     routes.sort(key=lambda r: r["margin"], reverse=True)
@@ -446,16 +466,25 @@ def run_server_arbitrage(current_config, order_books=None):
 
     fee = float(arb.get("fee", 0.1)) / 100.0
     edges = build_arbitrage_edges(order_books, fee)
-    routes = find_arbitrage(
-        edges,
-        arb.get("currency", "USDT"),
-        float(arb.get("amount", 100)),
-        float(arb.get("min_margin", 0.3)),
-    )
+    assets = arb.get("starting_assets") or [{
+        "currency": arb.get("currency", "USDT"),
+        "amount": arb.get("amount", 100),
+    }]
+    routes = []
+    for asset in assets:
+        routes.extend(find_arbitrage(
+            edges,
+            asset["currency"],
+            float(asset["amount"]),
+            float(arb.get("min_margin", 0.3)),
+        ))
+    routes.sort(key=lambda route: route["margin"], reverse=True)
     return routes[0] if routes else None
 
 
-def format_arbitrage_message(route, currency, amount):
+def format_arbitrage_message(route, currency=None, amount=None):
+    currency = route.get("currency", currency or "USDT")
+    amount = route.get("amount", amount if amount is not None else 100)
     lines = [
         "BYNEX — арбитраж",
         "Маржа: +{:.4f}%".format(route["margin"]),
@@ -467,9 +496,9 @@ def format_arbitrage_message(route, currency, amount):
     lines.append("")
     for i, step in enumerate(route["steps"], 1):
         lines.append(
-            "{}. {} — {} ({:.6g} → {:.6g})".format(
+            "{}. {} — {} @ {:.10g} ({:.6g} → {:.6g})".format(
                 i, step["edge"]["pair"], step["edge"]["direction"],
-                step["in"], step["out"],
+                step["price"], step["in"], step["out"],
             )
         )
     return "\n".join(lines)
@@ -619,10 +648,10 @@ def monitor_loop():
                                     else "Контроль порога"
                                 )
                                 message = (
-                                    "BYNEX Monitor — сигнал " + side_name + "\\n"
-                                    "Пара: " + pair + "\\n"
-                                    + mode_name + "\\n"
-                                    "Контрольная цена: " + raw_target + "\\n"
+                                    "BYNEX Monitor — сигнал " + side_name + "\n"
+                                    "Пара: " + pair + "\n"
+                                    + mode_name + "\n"
+                                    "Контрольная цена: " + raw_target + "\n"
                                     "Текущая цена: " + format(current_price, ".10g")
                                 )
                                 notifications.append(message)
