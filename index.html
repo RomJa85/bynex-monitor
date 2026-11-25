@@ -399,6 +399,41 @@ input[type="checkbox"] {
     font-size: 13px;
 }
 
+.arb-assets-control {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    min-width: 260px;
+}
+
+.arb-assets-title {
+    color: #aab6c5;
+    font-size: 13px;
+}
+
+.arb-asset-row {
+    display: grid;
+    grid-template-columns: 105px minmax(90px, 1fr) 36px;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.arb-asset-row select,
+.arb-asset-row input {
+    width: 100%;
+    min-width: 0;
+}
+
+.remove-asset-button {
+    padding: 7px;
+    background: #8f3d48;
+    font-size: 18px;
+}
+
+@media (max-width: 600px) {
+    .arb-assets-control { width: 100%; }
+}
+
 .arb-controls select,
 .arb-controls input {
     width: 145px;
@@ -550,25 +585,26 @@ input[type="checkbox"] {
 
     <div class="arb-controls">
 
-        <label>
-            Начальная валюта
-            <select id="arbCurrency">
-                <option value="USDT">USDT</option>
-                <option value="BTC">BTC</option>
-                <option value="LTC">LTC</option>
-                <option value="ETH">ETH</option>
-                <option value="SOL">SOL</option>
-                <option value="BYN">BYN</option>
-                <option value="USD">USD</option>
-            </select>
-        </label>
-
-        <label>
-            Сумма актива
-            <input type="number" id="arbAmount"
-                   value="100" min="0.00000001"
-                   step="any">
-        </label>
+        <div class="arb-assets-control">
+            <span class="arb-assets-title">Стартовые активы для расчёта</span>
+            <div id="arbAssets">
+                <div class="arb-asset-row">
+                    <select class="arb-asset-currency" aria-label="Валюта стартового актива">
+                        <option value="USDT">USDT</option>
+                        <option value="BTC">BTC</option>
+                        <option value="LTC">LTC</option>
+                        <option value="ETH">ETH</option>
+                        <option value="SOL">SOL</option>
+                        <option value="BYN">BYN</option>
+                        <option value="USD">USD</option>
+                    </select>
+                    <input type="number" class="arb-asset-amount" value="100"
+                           min="0.00000001" step="any" aria-label="Количество актива">
+                    <button type="button" class="remove-asset-button" title="Удалить актив">×</button>
+                </div>
+            </div>
+            <button type="button" id="addArbAssetButton" class="add-button">+ Добавить актив</button>
+        </div>
 
         <label>
             Комиссия за сделку (%)
@@ -1319,6 +1355,38 @@ async function apiGetConfig() {
     return await response.json();
 }
 
+function addArbAssetRow(currency = "USDT", amount = 100) {
+    const container = document.getElementById("arbAssets");
+    const row = document.createElement("div");
+    row.className = "arb-asset-row";
+    row.innerHTML = `
+        <select class="arb-asset-currency" aria-label="Валюта стартового актива">
+            <option value="USDT">USDT</option><option value="BTC">BTC</option>
+            <option value="LTC">LTC</option><option value="ETH">ETH</option>
+            <option value="SOL">SOL</option><option value="BYN">BYN</option>
+            <option value="USD">USD</option>
+        </select>
+        <input type="number" class="arb-asset-amount" min="0.00000001"
+               step="any" aria-label="Количество актива">
+        <button type="button" class="remove-asset-button" title="Удалить актив">×</button>
+    `;
+    row.querySelector(".arb-asset-currency").value = currency || "USDT";
+    row.querySelector(".arb-asset-amount").value = amount ?? "";
+    container.appendChild(row);
+    row.querySelectorAll("select, input").forEach(el =>
+        el.addEventListener("change", scheduleConfigSave)
+    );
+    row.querySelector(".remove-asset-button").addEventListener("click", () => {
+        if (container.querySelectorAll(".arb-asset-row").length > 1) {
+            row.remove();
+            scheduleConfigSave();
+        } else {
+            row.querySelector(".arb-asset-amount").value = "";
+            scheduleConfigSave();
+        }
+    });
+}
+
 function buildCurrentConfig() {
     const cards = Array.from(
         monitorsContainer.querySelectorAll(".monitor-card")
@@ -1348,8 +1416,12 @@ function buildCurrentConfig() {
         cards,
         arbitrage: {
             enabled: Boolean(document.getElementById("autoArbitrage")?.checked),
-            currency: document.getElementById("arbCurrency")?.value || "USDT",
-            amount: Number(document.getElementById("arbAmount")?.value) || 100,
+            starting_assets: Array.from(document.querySelectorAll(".arb-asset-row"))
+                .map(row => ({
+                    currency: row.querySelector(".arb-asset-currency").value,
+                    amount: Number(row.querySelector(".arb-asset-amount").value)
+                }))
+                .filter(asset => Number.isFinite(asset.amount) && asset.amount > 0),
             fee: document.getElementById("arbFee")?.value.trim() === ""
                 ? 0.1
                 : Number(document.getElementById("arbFee").value),
@@ -1405,8 +1477,12 @@ function applyServerConfig(config) {
             if (el) el.checked = Boolean(value);
         };
         setCheck("autoArbitrage", arb.enabled);
-        setVal("arbCurrency", arb.currency);
-        setVal("arbAmount", arb.amount);
+        const assetsContainer = document.getElementById("arbAssets");
+        assetsContainer.innerHTML = "";
+        const savedAssets = Array.isArray(arb.starting_assets) && arb.starting_assets.length
+            ? arb.starting_assets
+            : [{ currency: arb.currency || "USDT", amount: arb.amount || 100 }];
+        savedAssets.forEach(asset => addArbAssetRow(asset.currency, asset.amount));
         setVal("arbFee", arb.fee);
         setVal("arbMinMargin", arb.min_margin);
 
@@ -1885,22 +1961,19 @@ function showArbitrageResult(routes, currency) {
 // Основная функция арбитража
 async function runArbitrage() {
 
-    const currency =
-        document.getElementById("arbCurrency").value;
+    const assets = Array.from(document.querySelectorAll(".arb-asset-row"))
+        .map(row => ({
+            currency: row.querySelector(".arb-asset-currency").value,
+            amount: Number(row.querySelector(".arb-asset-amount").value)
+        }))
+        .filter(asset => Number.isFinite(asset.amount) && asset.amount > 0);
 
-    const amount =
-        Number(document.getElementById("arbAmount").value);
+    const feePercent = Number(document.getElementById("arbFee").value);
 
-    const feePercent =
-        Number(document.getElementById("arbFee").value);
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-
+    if (!assets.length) {
         arbResult.className = "arb-result error";
-        arbResult.textContent =
-            "Укажите корректную начальную сумму.";
+        arbResult.textContent = "Добавьте хотя бы один стартовый актив с положительной суммой.";
         return;
-
     }
 
     if (
@@ -1956,10 +2029,11 @@ async function runArbitrage() {
         const edges =
             buildArbitrageEdges(orderBooks, fee);
 
-        const routes =
-            findArbitrage(edges, currency, amount);
+        const routes = assets.flatMap(asset =>
+            findArbitrage(edges, asset.currency, asset.amount)
+        ).sort((a, b) => b.margin - a.margin);
 
-        showArbitrageResult(routes, currency);
+        showArbitrageResult(routes, assets.map(asset => asset.currency).join(", "));
 
     } catch (error) {
 
@@ -1978,6 +2052,22 @@ async function runArbitrage() {
 
 }
 
+document.getElementById("addArbAssetButton").addEventListener("click", () => {
+    addArbAssetRow("USDT", "");
+    scheduleConfigSave();
+});
+document.querySelectorAll("#arbAssets select, #arbAssets input").forEach(el =>
+    el.addEventListener("change", scheduleConfigSave)
+);
+document.querySelectorAll(".remove-asset-button").forEach(button =>
+    button.addEventListener("click", () => {
+        const row = button.closest(".arb-asset-row");
+        const container = document.getElementById("arbAssets");
+        if (container.querySelectorAll(".arb-asset-row").length > 1) row.remove();
+        else row.querySelector(".arb-asset-amount").value = "";
+        scheduleConfigSave();
+    })
+);
 arbButton.addEventListener("click", runArbitrage);
 
 </script>
