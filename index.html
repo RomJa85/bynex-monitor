@@ -41,6 +41,47 @@ h1 {
     margin-bottom: 16px;
 }
 
+.wallet-balance-panel {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 24px;
+}
+
+.wallet-balance-heading h2 {
+    margin: 0 0 6px;
+    font-size: 18px;
+}
+
+.wallet-balance-value {
+    font-size: 28px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.wallet-balance-meta {
+    color: #8d9aab;
+    font-size: 12px;
+    text-align: right;
+}
+
+.wallet-balance-state {
+    color: #36d69a;
+    font-size: 12px;
+}
+
+.wallet-balance-state.stale {
+    color: #f0b45c;
+}
+
+@media (max-width: 600px) {
+    .wallet-balance-meta {
+        width: 100%;
+        text-align: left;
+    }
+}
+
 .monitor-card {
     display: grid;
     grid-template-columns: 155px 1fr;
@@ -486,6 +527,20 @@ input[type="checkbox"] {
 
         </div>
 
+    </div>
+
+    <!-- Общий баланс кошелька BYNEX -->
+    <div class="panel wallet-balance-panel">
+        <div class="wallet-balance-heading">
+            <h2>Общий баланс BYNEX</h2>
+            <div id="walletBalanceState" class="wallet-balance-state">
+                Ожидание данных с BYNEX
+            </div>
+        </div>
+        <div id="walletBalanceValue" class="wallet-balance-value">—</div>
+        <div id="walletBalanceMeta" class="wallet-balance-meta">
+            Валюта: —<br>Последнее обновление: —
+        </div>
     </div>
 
 <!-- Арбитражный модуль -->
@@ -1435,6 +1490,57 @@ async function pollServerConfig() {
     }
 }
 
+const walletBalanceValue = document.getElementById("walletBalanceValue");
+const walletBalanceState = document.getElementById("walletBalanceState");
+const walletBalanceMeta = document.getElementById("walletBalanceMeta");
+
+function renderWalletBalance(data) {
+    if (!data || !data.received_at || data.balance == null || !data.currency) {
+        walletBalanceValue.textContent = "—";
+        walletBalanceState.textContent = "Ожидание данных с BYNEX";
+        walletBalanceState.className = "wallet-balance-state";
+        walletBalanceMeta.textContent = "Валюта: — · Последнее обновление: —";
+        return;
+    }
+
+    const receivedAt = new Date(data.received_at);
+    const ageMs = Date.now() - receivedAt.getTime();
+    const isStale = !Number.isFinite(ageMs) || ageMs > 90_000;
+
+    walletBalanceValue.textContent =
+        Number(data.balance).toLocaleString("ru-RU", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 8
+        }) + " " + data.currency;
+
+    walletBalanceState.textContent = isStale
+        ? "Данные устарели"
+        : "Получено с BYNEX";
+    walletBalanceState.className = isStale
+        ? "wallet-balance-state stale"
+        : "wallet-balance-state";
+
+    walletBalanceMeta.textContent =
+        "Валюта: " + data.currency +
+        " · Последнее обновление: " +
+        receivedAt.toLocaleString("ru-RU");
+}
+
+async function pollWalletBalance() {
+    try {
+        const response = await fetch(API_BASE + "/api/wallet-balance", {
+            method: "GET",
+            cache: "no-store"
+        });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        renderWalletBalance(await response.json());
+    } catch (error) {
+        walletBalanceState.textContent = "Нет связи с сервером";
+        walletBalanceState.className = "wallet-balance-state stale";
+        console.warn("BYNEX wallet balance polling:", error);
+    }
+}
+
 async function initializeMonitor() {
     try {
         const config = await apiGetConfig();
@@ -1445,6 +1551,9 @@ async function initializeMonitor() {
         setSyncStatus("Не удалось загрузить настройки: " + error.message, true);
         console.error("BYNEX config init:", error);
     }
+
+    pollWalletBalance();
+    setInterval(pollWalletBalance, 3000);
 }
 
 initializeMonitor();
