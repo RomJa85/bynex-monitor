@@ -28,6 +28,15 @@
     const SESSION_ACTIVITY_BASE_MS = 45_000;
     const SESSION_ACTIVITY_RANDOM_MS = 15_000;
 
+    // Состояние таймеров и отправки данных.
+    let sending = false;
+    let lastSignature = null;
+    let lastSentAt = 0;
+    let debounceTimer = null;
+    let observer = null;
+    let heartbeatTimer = null;
+    let sessionActivityTimer = null;
+
     function readWalletBalance() {
         const balanceElement = document.querySelector(BALANCE_SELECTOR);
         const currencyElement = document.querySelector(CURRENCY_SELECTOR);
