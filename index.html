@@ -674,6 +674,129 @@ function getApiUrl(pair) {
         encodeURIComponent(pair) +
         "&t=" + Date.now();
 }
+
+/*
+ * Единая очередь получения стаканов для монитора и арбитража.
+ * Не более трёх одновременных запросов; повторяем временные сетевые
+ * ошибки и ответы 429/502/503/504. Одновременные запросы одной пары
+ * используют один и тот же Promise.
+ */
+const ORDERBOOK_MAX_CONCURRENT = 3;
+const ORDERBOOK_MAX_ATTEMPTS = 3;
+const ORDERBOOK_TIMEOUT_MS = 12000;
+let orderBookActiveRequests = 0;
+const orderBookQueue = [];
+const orderBookInFlight = new Map();
+
+function pumpOrderBookQueue() {
+    while (
+        orderBookActiveRequests < ORDERBOOK_MAX_CONCURRENT &&
+        orderBookQueue.length > 0
+    ) {
+        const task = orderBookQueue.shift();
+        orderBookActiveRequests++;
+
+        Promise.resolve()
+            .then(task.run)
+            .then(task.resolve, task.reject)
+            .finally(() => {
+                orderBookActiveRequests--;
+                pumpOrderBookQueue();
+            });
+    }
+}
+
+function enqueueOrderBookRequest(run) {
+    return new Promise((resolve, reject) => {
+        orderBookQueue.push({ run, resolve, reject });
+        pumpOrderBookQueue();
+    });
+}
+
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function fetchOrderBookData(pair) {
+    if (orderBookInFlight.has(pair)) {
+        return orderBookInFlight.get(pair);
+    }
+
+    const requestPromise = enqueueOrderBookRequest(async () => {
+        let lastError;
+
+        for (let attempt = 1; attempt <= ORDERBOOK_MAX_ATTEMPTS; attempt++) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(
+                () => controller.abort(),
+                ORDERBOOK_TIMEOUT_MS
+            );
+
+            try {
+                const response = await fetch(getApiUrl(pair), {
+                    method: "GET",
+                    cache: "no-store",
+                    signal: controller.signal
+                });
+
+                if (!response.ok) {
+                    const error = new Error("HTTP " + response.status);
+                    error.retryable = [429, 502, 503, 504].includes(response.status);
+                    throw error;
+                }
+
+                const book = await response.json();
+
+                if (!book.bids?.length || !book.asks?.length) {
+                    throw new Error("Стакан пуст");
+                }
+
+                return book;
+
+            } catch (error) {
+                lastError = error;
+
+                const retryable =
+                    error.name === "TypeError" ||
+                    error.name === "AbortError" ||
+                    error.retryable === true;
+
+                if (!retryable || attempt === ORDERBOOK_MAX_ATTEMPTS) {
+                    throw new Error(pair + ": " + error.message);
+                }
+
+                console.warn(
+                    "BYNEX " + pair + ": временная ошибка, повтор " +
+                    attempt + "/" + (ORDERBOOK_MAX_ATTEMPTS - 1),
+                    error
+                );
+
+                await delay(400 * attempt);
+
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        }
+
+        throw new Error(pair + ": " + (lastError?.message || "ошибка запроса"));
+    });
+
+    orderBookInFlight.set(pair, requestPromise);
+    requestPromise.then(
+        () => {
+            if (orderBookInFlight.get(pair) === requestPromise) {
+                orderBookInFlight.delete(pair);
+            }
+        },
+        () => {
+            if (orderBookInFlight.get(pair) === requestPromise) {
+                orderBookInFlight.delete(pair);
+            }
+        }
+    );
+
+    return requestPromise;
+}
     
 const monitorsContainer = document.getElementById("monitors");
 
@@ -1162,18 +1285,7 @@ async function getOrderBook(card) {
 
     try {
 
-        const url = getApiUrl(pair);
-
-        const response = await fetch(url, {
-            method: "GET",
-            cache: "no-store"
-        });
-
-        if (!response.ok) {
-            throw new Error("HTTP " + response.status);
-        }
-
-        const book = await response.json();
+        const book = await fetchOrderBookData(pair);
 
         // Проверяем, что пользователь не сменил пару
         // во время выполнения запроса
@@ -1652,30 +1764,29 @@ function arbFormat(value) {
 // Получение актуальных стаканов выбранных пар
 async function getArbitrageOrderBooks(pairs) {
 
-    const results = await Promise.all(
-        pairs.map(async pair => {
-
-            const url = getApiUrl(pair);
-
-            const response = await fetch(url, {
-                cache: "no-store"
-            });
-
-            if (!response.ok) {
-                throw new Error(pair + ": HTTP " + response.status);
-            }
-
-            const book = await response.json();
-
-            if (!book.bids?.length || !book.asks?.length) {
-                throw new Error(pair + ": пустой стакан");
-            }
-
-            return { pair, book };
-        })
+    // Ошибка по одной паре не должна отменять получение остальных стаканов.
+    const settled = await Promise.allSettled(
+        pairs.map(async pair => ({
+            pair,
+            book: await fetchOrderBookData(pair)
+        }))
     );
 
-    return results;
+    const orderBooks = [];
+    const failedPairs = [];
+
+    settled.forEach((result, index) => {
+        if (result.status === "fulfilled") {
+            orderBooks.push(result.value);
+        } else {
+            failedPairs.push({
+                pair: pairs[index],
+                error: result.reason?.message || "Неизвестная ошибка"
+            });
+        }
+    });
+
+    return { orderBooks, failedPairs };
 }
 
 // Формирование направлений обмена
@@ -1851,17 +1962,28 @@ function findArbitrage(edges, startCurrency, startAmount) {
 }
 
 // Отображение результата
-function showArbitrageResult(routes, currency) {
+function showArbitrageResult(routes, currency, failedPairs = []) {
+
+    const warningHtml = failedPairs.length
+        ? `
+            <div style="margin-bottom:12px;color:#f0b45c">
+                Не удалось получить стаканы: ${failedPairs.map(item =>
+                    item.pair + " (" + item.error + ")"
+                ).join("; ")}.
+                Анализ выполнен по остальным полученным парам.
+            </div>
+        `
+        : "";
 
     if (routes.length === 0) {
 
         arbResult.className = "arb-result no-profit";
 
-        arbResult.innerHTML = `
+        arbResult.innerHTML = warningHtml + `
             <strong>Профитная цепочка не найдена.</strong>
             <br>
             Для валюты ${currency} не обнаружено
-            прибыльных цепочек из трёх пар среди выбранных
+            прибыльных цепочек из трёх пар среди полученных
             торговых инструментов с учётом комиссии,
             заданной суммы и доступного объёма на лучших ценах.
         `;
@@ -1898,7 +2020,7 @@ function showArbitrageResult(routes, currency) {
 
     arbResult.className = "arb-result profit";
 
-    arbResult.innerHTML = `
+    arbResult.innerHTML = warningHtml + `
 
         <div><strong>Найдена прибыльная цепочка!</strong></div>
 
@@ -2018,8 +2140,17 @@ async function runArbitrage() {
     try {
 
         // Получаем свежие данные именно для выбранных пар
-        const orderBooks =
+        const { orderBooks, failedPairs } =
             await getArbitrageOrderBooks(selectedPairs);
+
+        if (orderBooks.length < 3) {
+            const details = failedPairs.map(item =>
+                item.pair + ": " + item.error
+            ).join("; ");
+            throw new Error(
+                "Получено меньше трёх стаканов. " + details
+            );
+        }
 
         const fee = feePercent / 100;
 
@@ -2030,7 +2161,11 @@ async function runArbitrage() {
             findArbitrage(edges, asset.currency, asset.amount)
         ).sort((a, b) => b.margin - a.margin);
 
-        showArbitrageResult(routes, assets.map(asset => asset.currency).join(", "));
+        showArbitrageResult(
+            routes,
+            assets.map(asset => asset.currency).join(", "),
+            failedPairs
+        );
 
     } catch (error) {
 
