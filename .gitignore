@@ -1,0 +1,7 @@
+secrets.json
+secrets.json.tmp
+monitor_config.json
+monitor_config.json.tmp
+monitor_state.json
+monitor_state.json.tmp
+__pycache__/
