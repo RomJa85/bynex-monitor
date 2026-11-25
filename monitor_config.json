@@ -1,0 +1,134 @@
+{
+  "revision": 165,
+  "auto_enabled": true,
+  "interval": 10,
+  "cards": [
+    {
+      "id": "1",
+      "pair": "USDT-BYN",
+      "bid": {
+        "value": "3.026",
+        "mode": "order"
+      },
+      "ask": {
+        "value": "3.039",
+        "mode": "order"
+      }
+    },
+    {
+      "id": "2",
+      "pair": "USDT-USD",
+      "bid": {
+        "value": "1.00505",
+        "mode": "order"
+      },
+      "ask": {
+        "value": "",
+        "mode": "order"
+      }
+    },
+    {
+      "id": "3",
+      "pair": "LTC-USD",
+      "bid": {
+        "value": "",
+        "mode": "order"
+      },
+      "ask": {
+        "value": "",
+        "mode": "order"
+      }
+    },
+    {
+      "id": "4",
+      "pair": "LTC-BYN",
+      "bid": {
+        "value": "",
+        "mode": "order"
+      },
+      "ask": {
+        "value": "",
+        "mode": "order"
+      }
+    },
+    {
+      "id": "5",
+      "pair": "LTC-USDT",
+      "bid": {
+        "value": "42",
+        "mode": "threshold"
+      },
+      "ask": {
+        "value": "",
+        "mode": "order"
+      }
+    },
+    {
+      "id": "6",
+      "pair": "ETH-USDT",
+      "bid": {
+        "value": "",
+        "mode": "order"
+      },
+      "ask": {
+        "value": "",
+        "mode": "order"
+      }
+    },
+    {
+      "id": "7",
+      "pair": "ETH-BYN",
+      "bid": {
+        "value": "",
+        "mode": "order"
+      },
+      "ask": {
+        "value": "",
+        "mode": "order"
+      }
+    },
+    {
+      "id": "8",
+      "pair": "ETH-USD",
+      "bid": {
+        "value": "",
+        "mode": "order"
+      },
+      "ask": {
+        "value": "",
+        "mode": "order"
+      }
+    },
+    {
+      "id": "9",
+      "pair": "SOL-USDT",
+      "bid": {
+        "value": "",
+        "mode": "order"
+      },
+      "ask": {
+        "value": "",
+        "mode": "order"
+      }
+    },
+    {
+      "id": "10",
+      "pair": "SOL-BYN",
+      "bid": {
+        "value": "",
+        "mode": "order"
+      },
+      "ask": {
+        "value": "",
+        "mode": "order"
+      }
+    }
+  ],
+  "arbitrage": {
+    "enabled": true,
+    "currency": "BYN",
+    "amount": 100.0,
+    "fee": 0.25,
+    "min_margin": 0.3
+  }
+}
