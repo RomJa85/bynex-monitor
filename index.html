@@ -1380,9 +1380,6 @@ function addArbAssetRow(currency = "USDT", amount = 100) {
         if (container.querySelectorAll(".arb-asset-row").length > 1) {
             row.remove();
             scheduleConfigSave();
-        } else {
-            row.querySelector(".arb-asset-amount").value = "";
-            scheduleConfigSave();
         }
     });
 }
@@ -2063,9 +2060,10 @@ document.querySelectorAll(".remove-asset-button").forEach(button =>
     button.addEventListener("click", () => {
         const row = button.closest(".arb-asset-row");
         const container = document.getElementById("arbAssets");
-        if (container.querySelectorAll(".arb-asset-row").length > 1) row.remove();
-        else row.querySelector(".arb-asset-amount").value = "";
-        scheduleConfigSave();
+        if (container.querySelectorAll(".arb-asset-row").length > 1) {
+            row.remove();
+            scheduleConfigSave();
+        }
     })
 );
 arbButton.addEventListener("click", runArbitrage);
