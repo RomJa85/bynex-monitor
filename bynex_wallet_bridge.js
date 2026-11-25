@@ -24,59 +24,9 @@
     const HEARTBEAT_MS = 30_000;
     const MUTATION_DEBOUNCE_MS = 250;
 
-    // Штатное продление авторизованной сессии BYNEX.
-    // Bearer-токен используется только внутри вкладки и не передаётся на сервер монитора.
-    const SESSION_RENEW_URL =
-        "/trading/ru/api/auth/postponeSessionExpiration";
-    const SESSION_RENEW_INTERVAL_MS = 50_000;
-
-    let observer = null;
-    let debounceTimer = null;
-    let heartbeatTimer = null;
-    let lastSignature = "";
-    let lastSentAt = 0;
-    let sending = false;
-    let sessionRenewTimer = null;
-    let sessionRenewInProgress = false;
-
-    async function renewBynexSession() {
-        if (sessionRenewInProgress) return;
-
-        // Токен перечитывается перед каждым запросом: если приложение обновит его,
-        // следующий запрос автоматически использует новое значение.
-        const token = localStorage.getItem("bynex_token");
-        if (!token) {
-            console.warn("[BYNEX Monitor] Не найден bynex_token; сессия не продлена.");
-            return;
-        }
-
-        sessionRenewInProgress = true;
-        try {
-            const response = await fetch(SESSION_RENEW_URL, {
-                method: "GET",
-                headers: { "Authorization": "Bearer " + token },
-                credentials: "include",
-                cache: "no-store"
-            });
-
-            if (response.status === 401) {
-                console.warn("[BYNEX Monitor] BYNEX отклонил продление сессии (401). " +
-                    "Возможно, требуется повторная авторизация.");
-                return;
-            }
-            if (!response.ok) {
-                throw new Error("HTTP " + response.status);
-            }
-
-            const result = await response.json();
-            console.info("[BYNEX Monitor] Сессия BYNEX продлена.",
-                result.expireDate ? "Действует до: " + result.expireDate : "");
-        } catch (error) {
-            console.error("[BYNEX Monitor] Ошибка продления сессии:", error);
-        } finally {
-            sessionRenewInProgress = false;
-        }
-    }
+    // Имитация пользовательской активности для штатного продления сессии BYNEX.
+    const SESSION_ACTIVITY_BASE_MS = 45_000;
+    const SESSION_ACTIVITY_RANDOM_MS = 15_000;
 
     function readWalletBalance() {
         const balanceElement = document.querySelector(BALANCE_SELECTOR);
@@ -156,10 +106,26 @@
         return;
     }
 
-    // Запускаем продление сразу и далее каждые 50 секунд.
-    // По предыдущим наблюдениям штатный интервал BYNEX составлял около 63–74 секунд.
-    renewBynexSession();
-    sessionRenewTimer = setInterval(renewBynexSession, SESSION_RENEW_INTERVAL_MS);
+    function dispatchSessionActivity() {
+        const target = document.body;
+        if (target) {
+            target.dispatchEvent(new MouseEvent("mousemove", {
+                bubbles: true,
+                cancelable: true,
+                clientX: 500,
+                clientY: 300,
+                view: window
+            }));
+            console.info("[BYNEX Monitor] Событие активности отправлено.");
+        }
+
+        const delay = SESSION_ACTIVITY_BASE_MS +
+            Math.floor(Math.random() * SESSION_ACTIVITY_RANDOM_MS) + 1;
+        sessionActivityTimer = setTimeout(dispatchSessionActivity, delay);
+    }
+
+    // Первое событие отправляем сразу, следующие — через 46–60 секунд.
+    dispatchSessionActivity();
 
     observer = new MutationObserver(scheduleSend);
     observer.observe(balanceElement, {
@@ -176,7 +142,7 @@
         if (observer) observer.disconnect();
         if (debounceTimer !== null) clearTimeout(debounceTimer);
         if (heartbeatTimer !== null) clearInterval(heartbeatTimer);
-        if (sessionRenewTimer !== null) clearInterval(sessionRenewTimer);
+        if (sessionActivityTimer !== null) clearTimeout(sessionActivityTimer);
         observer = null;
         debounceTimer = null;
         heartbeatTimer = null;
