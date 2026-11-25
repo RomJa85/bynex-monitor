@@ -61,6 +61,9 @@ wallet_balance_state = {
 monitor_thread = None
 stop_event = threading.Event()
 wake_event = threading.Event()
+# Ограничиваем суммарное число одновременных обращений к BYNEX
+# независимо от количества вкладок и фоновых/браузерных запросов.
+orderbook_upstream_semaphore = threading.BoundedSemaphore(3)
 
 
 # Диагностика фонового мониторинга. Счётчики действуют с момента запуска сервера.
@@ -324,8 +327,9 @@ def fetch_full_orderbook(pair):
             "Referer": "https://bynex.io/",
         },
     )
-    with urlopen(request, timeout=15) as response:
-        data = json.loads(response.read().decode("utf-8"))
+    with orderbook_upstream_semaphore:
+        with urlopen(request, timeout=15) as response:
+            data = json.loads(response.read().decode("utf-8"))
     return data.get("bids") or [], data.get("asks") or []
 
 
@@ -809,8 +813,9 @@ class BynexHandler(SimpleHTTPRequestHandler):
                         "Referer": "https://bynex.io/",
                     },
                 )
-                with urlopen(request, timeout=15) as response:
-                    data = response.read()
+                with orderbook_upstream_semaphore:
+                    with urlopen(request, timeout=15) as response:
+                        data = response.read()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(data)))
