@@ -11,6 +11,7 @@ from urllib.request import Request, urlopen
 
 API_BASE = "https://bynex.io/trading/ru/api/symbolOrderBook/pair/"
 GITHUB_ORIGIN = "https://romja85.github.io"
+BYNEX_ORIGIN = "https://bynex.io"
 HOST = "127.0.0.1"
 PORT = 8000
 
@@ -52,6 +53,11 @@ lock = threading.RLock()
 config = None
 fired_state = {}
 status_state = {}
+wallet_balance_state = {
+    "currency": None,
+    "balance": None,
+    "received_at": None,
+}
 monitor_thread = None
 stop_event = threading.Event()
 wake_event = threading.Event()
@@ -706,8 +712,13 @@ def monitor_loop():
 class BynexHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
         origin = self.headers.get("Origin")
-        if origin == GITHUB_ORIGIN:
-            self.send_header("Access-Control-Allow-Origin", GITHUB_ORIGIN)
+        path = urlparse(self.path).path
+        origin_allowed = (
+            origin == GITHUB_ORIGIN
+            or (origin == BYNEX_ORIGIN and path == "/api/wallet-balance")
+        )
+        if origin_allowed:
+            self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
             self.send_header(
                 "Access-Control-Allow-Methods", "GET, POST, OPTIONS"
@@ -728,11 +739,24 @@ class BynexHandler(SimpleHTTPRequestHandler):
 
     def do_OPTIONS(self):
         parsed = urlparse(self.path)
-        if parsed.path not in ("/api/orderbook", "/api/config", "/api/status"):
+        allowed_paths = (
+            "/api/orderbook",
+            "/api/config",
+            "/api/status",
+            "/api/wallet-balance",
+        )
+        if parsed.path not in allowed_paths:
             self.send_error(404, "Not found")
             return
         origin = self.headers.get("Origin")
-        if origin != GITHUB_ORIGIN:
+        origin_allowed = (
+            origin == GITHUB_ORIGIN
+            or (
+                parsed.path == "/api/wallet-balance"
+                and origin == BYNEX_ORIGIN
+            )
+        )
+        if not origin_allowed:
             self.send_error(403, "Origin not allowed")
             return
         self.send_response(204)
@@ -770,6 +794,11 @@ class BynexHandler(SimpleHTTPRequestHandler):
                 self.send_error(502, "Cannot connect to BYNEX: " + str(error))
             return
 
+        if parsed.path == "/api/wallet-balance":
+            with lock:
+                self.send_json(200, dict(wallet_balance_state))
+            return
+
         if parsed.path == "/api/config":
             with lock:
                 self.send_json(200, config)
@@ -788,6 +817,7 @@ class BynexHandler(SimpleHTTPRequestHandler):
                     "auto_enabled": config["auto_enabled"],
                     "revision": config["revision"],
                     "controllers": dict(status_state),
+                    "wallet_balance": dict(wallet_balance_state),
                     "diagnostics": diagnostics,
                     "server_time": utc_now(),
                 })
@@ -797,6 +827,50 @@ class BynexHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+
+        if parsed.path == "/api/wallet-balance":
+            if self.headers.get("Origin") != BYNEX_ORIGIN:
+                self.send_json(403, {"error": "Origin not allowed"})
+                return
+
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 4096:
+                    self.send_json(400, {"error": "Некорректный размер запроса"})
+                    return
+
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                if not isinstance(payload, dict):
+                    raise ValueError("Ожидался JSON-объект")
+
+                currency = str(payload.get("currency", "")).upper().strip()
+                balance = payload.get("balance")
+
+                if currency not in ("BYN", "USD", "BTC"):
+                    raise ValueError("Неподдерживаемая валюта баланса")
+                if (
+                    isinstance(balance, bool)
+                    or not isinstance(balance, (int, float))
+                    or not math.isfinite(balance)
+                    or balance < 0
+                ):
+                    raise ValueError("Некорректное значение баланса")
+
+                with lock:
+                    wallet_balance_state.update({
+                        "currency": currency,
+                        "balance": float(balance),
+                        "received_at": utc_now(),
+                    })
+                    self.send_json(200, {
+                        "ok": True,
+                        "wallet_balance": dict(wallet_balance_state),
+                    })
+
+            except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
+                self.send_json(400, {"error": str(error)})
+            return
+
         if parsed.path != "/api/config":
             self.send_error(404, "Not found")
             return
